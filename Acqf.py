@@ -135,7 +135,7 @@ class MUMBO():
 		
 		denominator = np.sqrt(1 - rho**2)
 
-		density = norm.pdf(theta) * (norm.cdf((gammas - rho * theta)/denominator))
+		density = norm.pdf(theta) * (norm.cdf((gammas - rho * theta)/denominator))/norm.cdf(gammas)
 		entropy_function = -density * np.log(density,out=np.zeros_like(density), where=(density != 0))
 
 		approx_entropy = simpson(entropy_function.T,x=theta.T)
@@ -153,4 +153,81 @@ class MUMBO():
 		#print("The cost shape is: ", cost.shape)
 		#print("The f_acqu_x shape is: ", f_acqu_x.shape)
 		f_acqu_x= f_acqu_x.reshape(-1,1) * cost
+		return f_acqu_x.reshape(-1,1)
+
+	def evaluate_alternative_formulation(self,x):
+		"""
+		Evaluate the MUMBO acquisition function at a given point x.
+		
+		Parameters
+		----------
+		x : ndarray
+			Input location (shape: (m,d+1))
+		
+		Returns
+		-------
+		float
+			Value of the MUMBO acquisition function at x
+		"""
+		#Calculates max value samples if None
+		if not self._required_parameters_initialized():
+			self.update_parameters()
+		
+		#Extract replication index
+		n = x[:, -1].astype(int).reshape(-1,1)
+		x = x[:, :-1]
+		
+		print("The x shape is: ", x.shape)
+		print("The n shape is: ", n.shape)
+
+		# Get predictive mean and variance from the model
+		preds = self.model.predict(x)   
+
+		mean_f = preds["mean"].reshape(-1,1)
+		var_f = preds['sd2'].reshape(-1,1) 
+		mean_eps = preds['nugs'].reshape(-1,1)
+
+		std_f = np.sqrt(var_f)
+		std_f = np.maximum(std_f, 1e-10)  # Avoid division by zero
+
+		#Calculate Correlation Term
+		rho = np.sqrt(n) * std_f / np.sqrt(n * var_f + mean_eps)
+		kappa_sqn = mean_eps / (var_f*n)
+		kappa = np.sqrt(mean_eps / var_f)
+		gammas = (self.mvs - mean_f) / std_f
+
+		gamma_cdf = norm.cdf(gammas)
+		gamma_pdf = norm.pdf(gammas)
+
+		first_term = (gammas*gamma_pdf) / (2 * gamma_cdf*(1 + kappa_sqn))
+		second_term = - np.log(gamma_cdf)
+
+
+		ESGmean = rho * (norm.pdf(gammas)) / norm.cdf(gammas)
+		ESGvar = 1 - rho * ESGmean * (gammas + norm.pdf(gammas)/norm.cdf(gammas))
+		ESGvar = np.maximum(ESGvar,0)
+
+		upper_limit = ESGmean + 8 * np.sqrt(ESGvar)
+		lower_limit = ESGmean - 8 * np.sqrt(ESGvar)
+
+		theta = np.linspace(lower_limit,upper_limit,num = 5000)
+		
+		denominator = np.sqrt(1 - rho**2)
+		ESG_density = norm.pdf(theta) * (norm.cdf((gammas - rho * theta)/denominator))
+
+		inner_term = norm.cdf((gammas)* np.sqrt(n)*(np.sqrt(kappa_sqn +1) - theta)/kappa)
+		integral = ESG_density*np.log(inner_term,out=np.zeros_like(inner_term), where=(inner_term != 0))
+
+		approx_entropy = simpson(integral.T,x=theta.T)
+		#approx_entropy = np.mean(approx_entropy,axis = 0)
+
+		alpha = first_term + second_term + approx_entropy
+
+		alpha = np.mean(alpha,axis = 0)
+		#cost = 1/n
+		cost = 1
+		#print("The cost shape is: ", cost.shape)
+		#print("The f_acqu_x shape is: ", f_acqu_x.shape)
+		f_acqu_x= f_acqu_x.reshape(-1,1) * cost
+
 		return f_acqu_x.reshape(-1,1)
