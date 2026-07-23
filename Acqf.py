@@ -131,6 +131,7 @@ class MUMBO():
 		upper_limit = ESGmean + 8 * np.sqrt(ESGvar)
 		lower_limit = ESGmean - 8 * np.sqrt(ESGvar)
 
+		
 		theta = np.linspace(lower_limit,upper_limit,num = 5000)
 		
 		denominator = np.sqrt(1 - rho**2)

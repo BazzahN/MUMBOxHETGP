@@ -136,11 +136,11 @@ class HetGP_Model:
         train_y = np.asarray(train_y).flatten()
 
         # Standardise outputs if requested
-        self.output_transform = output_handler()
         if standardise:
+            self.output_transform = output_handler()
             train_y = self.output_transform.standardise_and_update(train_y)
         else:
-            self.output_transform.standardise_and_update(train_y)  # Initialize transform
+            self.output_transform = None
 
         # Fit hetGP model
         trace = 1 if self.verbose else -1
